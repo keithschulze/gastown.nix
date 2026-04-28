@@ -1,5 +1,5 @@
 {
-  description = "Nix packaging for Gas Town (gt) and Beads (bd)";
+  description = "Nix packaging and declarative configuration for Gas Town";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,6 +23,9 @@
       beads-src,
     }:
     let
+      lib = nixpkgs.lib;
+      gastownLib = import ./lib { inherit lib; };
+
       systems = [
         "aarch64-darwin"
         "aarch64-linux"
@@ -32,7 +35,7 @@
 
       forAllSystems =
         f:
-        nixpkgs.lib.genAttrs systems (
+        lib.genAttrs systems (
           system:
           f {
             pkgs = import nixpkgs { inherit system; };
@@ -41,6 +44,8 @@
         );
     in
     {
+      lib = gastownLib;
+
       packages = forAllSystems (
         { pkgs, system }:
         let
@@ -156,6 +161,100 @@
               self.packages.${system}.bd
             ];
           };
+        }
+      );
+
+      checks = forAllSystems (
+        { pkgs, system }:
+        {
+          eval-default =
+            let
+              town = gastownLib.mkTown {
+                inherit pkgs;
+                config = {
+                  settings.defaultAgent = "claude";
+                  rigs.test-rig = {
+                    gitUrl = "git@github.com:test/repo.git";
+                    defaultBranch = "main";
+                    beads.prefix = "tr";
+                    maxPolecats = 5;
+                    crew = [ "alice" ];
+                  };
+                };
+              };
+            in
+            pkgs.runCommand "check-eval-default" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              jq -e '.version == 1' ${town.rigsJson}
+              jq -e '.rigs["test-rig"].git_url == "git@github.com:test/repo.git"' ${town.rigsJson}
+              jq -e '.rigs["test-rig"].beads.prefix == "tr"' ${town.rigsJson}
+
+              jq -e '.type == "town-settings"' ${town.settingsJson}
+              jq -e '.default_agent == "claude"' ${town.settingsJson}
+
+              jq -e '.type == "rig"' ${town.rigConfigs.test-rig}
+              jq -e '.name == "test-rig"' ${town.rigConfigs.test-rig}
+              jq -e '.default_branch == "main"' ${town.rigConfigs.test-rig}
+              jq -e '.git_url == "git@github.com:test/repo.git"' ${town.rigConfigs.test-rig}
+
+              jq -e '.auto_restart == true' ${town.rigSettings.test-rig}
+              jq -e '.max_polecats == 5' ${town.rigSettings.test-rig}
+              jq -e '.default_formula == "mol-polecat-work"' ${town.rigSettings.test-rig}
+
+              test -f ${town.configDir}/rigs.json
+              test -f ${town.configDir}/settings/config.json
+              test -f ${town.configDir}/test-rig/config.json
+
+              echo "All checks passed"
+              touch $out
+            '';
+
+          eval-minimal =
+            let
+              town = gastownLib.mkTown {
+                inherit pkgs;
+                config = {
+                  rigs.minimal = {
+                    gitUrl = "git@github.com:test/minimal.git";
+                    beads.prefix = "mn";
+                  };
+                };
+              };
+            in
+            pkgs.runCommand "check-eval-minimal" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              jq -e '.rigs.minimal.git_url == "git@github.com:test/minimal.git"' ${town.rigsJson}
+              jq -e '.default_agent == "claude"' ${town.settingsJson}
+              jq -e '.default_branch == "main"' ${town.rigConfigs.minimal}
+
+              jq -e '.max_polecats == 10' ${town.rigSettings.minimal}
+              jq -e '.auto_restart == true' ${town.rigSettings.minimal}
+
+              echo "Minimal config checks passed"
+              touch $out
+            '';
+
+          eval-pure =
+            let
+              cfg = gastownLib.evalTown {
+                config = {
+                  rigs.pure-test = {
+                    gitUrl = "git@github.com:test/pure.git";
+                    beads.prefix = "pt";
+                    crew = [
+                      "dev1"
+                      "dev2"
+                    ];
+                  };
+                };
+              };
+            in
+            pkgs.runCommand "check-eval-pure" { } ''
+              [[ "${cfg.rigs.pure-test.gitUrl}" == "git@github.com:test/pure.git" ]]
+              [[ "${cfg.rigs.pure-test.beads.prefix}" == "pt" ]]
+              [[ "${cfg.settings.defaultAgent}" == "claude" ]]
+
+              echo "Pure evaluation checks passed"
+              touch $out
+            '';
         }
       );
     };
