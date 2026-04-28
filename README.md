@@ -50,6 +50,50 @@ town topology:
 }
 ```
 
+### With flake-utils
+
+Use [flake-utils](https://github.com/numtide/flake-utils) to generate
+outputs for all supported systems without manual `legacyPackages` plumbing:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    gastown-nix.url = "github:keithschulze/gastown.nix";
+  };
+
+  outputs = { nixpkgs, flake-utils, gastown-nix, ... }:
+  flake-utils.lib.eachDefaultSystem (system:
+    let
+      pkgs = nixpkgs.legacyPackages.${system};
+
+      town = gastown-nix.lib.mkTown {
+        inherit pkgs;
+        config = {
+          settings.defaultAgent = "claude";
+
+          rigs.my-project = {
+            gitUrl = "git@github.com:org/project.git";
+            defaultBranch = "main";
+            beads.prefix = "mp";
+            maxPolecats = 5;
+            crew = [ "alice" "bob" ];
+          };
+        };
+      };
+    in {
+      packages.activate = town.activate;
+      packages.configDir = town.configDir;
+    }
+  );
+}
+```
+
+This produces `packages.<system>.activate` and `packages.<system>.configDir`
+for each system (`x86_64-linux`, `aarch64-linux`, `x86_64-darwin`,
+`aarch64-darwin`).
+
 ## Pure evaluation
 
 Use `evalTown` when you only need the evaluated config without derivations:
