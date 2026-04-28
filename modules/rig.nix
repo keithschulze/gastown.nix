@@ -65,10 +65,18 @@ in
     };
 
     crew = mkOption {
-      type = types.listOf types.str;
-      default = [ ];
-      description = "List of crew member names.";
-      example = [ "alice" "bob" ];
+      type = types.attrsOf (types.submodule ./crew.nix);
+      default = { };
+      description = "Crew member definitions for this rig.";
+      example = {
+        alice = {
+          role = "developer";
+          githubUsername = "alice-gh";
+        };
+        bob = {
+          role = "reviewer";
+        };
+      };
     };
   };
 }

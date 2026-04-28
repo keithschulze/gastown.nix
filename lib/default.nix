@@ -8,6 +8,17 @@ let
     filterAttrs
     ;
 
+  # Convert a crew member config to its JSON representation
+  crewMemberToConfig = name: memberCfg:
+    filterAttrs (_: v: v != null) {
+      type = "crew-member";
+      version = 1;
+      inherit name;
+      role = memberCfg.role;
+      github_username = memberCfg.githubUsername;
+      email = memberCfg.email;
+    };
+
   # Convert evaluated rig config to a rigs.json registry entry
   rigToRegistryEntry = _name: rigCfg: {
     git_url = rigCfg.gitUrl;
@@ -27,6 +38,7 @@ let
     beads = {
       prefix = rigCfg.beads.prefix;
     };
+    crew = mapAttrs crewMemberToConfig rigCfg.crew;
   };
 
   # Convert rig config to operational settings (snake_case for gt CLI)
@@ -97,15 +109,24 @@ in
         pkgs.writeText "${name}-settings.json" (builtins.toJSON (rigToSettings rigCfg))
       ) cfg.rigs;
 
+      crewConfigFiles = mapAttrs (
+        rigName: rigCfg:
+        mapAttrs (
+          memberName: memberCfg:
+          pkgs.writeText "${rigName}-crew-${memberName}-config.json" (
+            builtins.toJSON (crewMemberToConfig memberName memberCfg)
+          )
+        ) rigCfg.crew
+      ) cfg.rigs;
+
       rigActivations = concatStringsSep "\n" (
         mapAttrsToList (
           name: rigCfg:
           let
-            crewChecks = concatStringsSep "\n" (
-              map (member: ''
-                if [ ! -d "$GT_ROOT/${name}/crew/${member}" ]; then
-                  echo "    crew '${member}' not initialised — run: gt crew add ${member}"
-                fi
+            crewSetup = concatStringsSep "\n" (
+              mapAttrsToList (member: _memberCfg: ''
+                mkdir -p "$GT_ROOT/${name}/crew/${member}"
+                install -m 644 ${crewConfigFiles.${name}.${member}} "$GT_ROOT/${name}/crew/${member}/config.json"
               '') rigCfg.crew
             );
           in
@@ -113,7 +134,7 @@ in
             echo "  rig: ${name}"
             mkdir -p "$GT_ROOT/${name}"
             install -m 644 ${rigConfigFiles.${name}} "$GT_ROOT/${name}/config.json"
-            ${crewChecks}
+            ${crewSetup}
           ''
         ) cfg.rigs
       );
@@ -127,6 +148,7 @@ in
       settingsJson = settingsJsonFile;
       rigConfigs = rigConfigFiles;
       rigSettings = rigSettingsFiles;
+      crewConfigs = crewConfigFiles;
 
       # All config files combined into a directory tree
       configDir = pkgs.runCommand "gt-config" { } (
@@ -136,10 +158,16 @@ in
           cp ${settingsJsonFile} $out/settings/config.json
         ''
         + concatStringsSep "\n" (
-          mapAttrsToList (name: _rigCfg: ''
+          mapAttrsToList (name: rigCfg: ''
             mkdir -p $out/${name}
             cp ${rigConfigFiles.${name}} $out/${name}/config.json
-          '') cfg.rigs
+          ''
+          + concatStringsSep "\n" (
+            mapAttrsToList (memberName: _memberCfg: ''
+              mkdir -p $out/${name}/crew/${memberName}
+              cp ${crewConfigFiles.${name}.${memberName}} $out/${name}/crew/${memberName}/config.json
+            '') rigCfg.crew
+          )) cfg.rigs
         )
       );
 

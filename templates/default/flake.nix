@@ -28,7 +28,9 @@
           defaultBranch = "main";
           beads.prefix = "mp";
           maxPolecats = 5;
-          crew = [ "alice" ];
+          crew.alice = {
+            role = "developer";
+          };
         };
       };
     in

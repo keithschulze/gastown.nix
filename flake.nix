@@ -178,7 +178,10 @@
                     defaultBranch = "main";
                     beads.prefix = "tr";
                     maxPolecats = 5;
-                    crew = [ "alice" ];
+                    crew.alice = {
+                      role = "developer";
+                      githubUsername = "alice-gh";
+                    };
                   };
                 };
               };
@@ -200,9 +203,21 @@
               jq -e '.max_polecats == 5' ${town.rigSettings.test-rig}
               jq -e '.default_formula == "mol-polecat-work"' ${town.rigSettings.test-rig}
 
+              # Crew member config in rig config.json
+              jq -e '.crew.alice.name == "alice"' ${town.rigConfigs.test-rig}
+              jq -e '.crew.alice.role == "developer"' ${town.rigConfigs.test-rig}
+              jq -e '.crew.alice.github_username == "alice-gh"' ${town.rigConfigs.test-rig}
+
+              # Per-member config file
+              jq -e '.type == "crew-member"' ${town.crewConfigs.test-rig.alice}
+              jq -e '.name == "alice"' ${town.crewConfigs.test-rig.alice}
+              jq -e '.role == "developer"' ${town.crewConfigs.test-rig.alice}
+              jq -e '.github_username == "alice-gh"' ${town.crewConfigs.test-rig.alice}
+
               test -f ${town.configDir}/rigs.json
               test -f ${town.configDir}/settings/config.json
               test -f ${town.configDir}/test-rig/config.json
+              test -f ${town.configDir}/test-rig/crew/alice/config.json
 
               echo "All checks passed"
               touch $out
@@ -239,10 +254,16 @@
                   rigs.pure-test = {
                     gitUrl = "git@github.com:test/pure.git";
                     beads.prefix = "pt";
-                    crew = [
-                      "dev1"
-                      "dev2"
-                    ];
+                    crew = {
+                      dev1 = {
+                        role = "developer";
+                        email = "dev1@example.com";
+                      };
+                      dev2 = {
+                        role = "reviewer";
+                        githubUsername = "dev2-gh";
+                      };
+                    };
                   };
                 };
               };
@@ -251,6 +272,12 @@
               [[ "${cfg.rigs.pure-test.gitUrl}" == "git@github.com:test/pure.git" ]]
               [[ "${cfg.rigs.pure-test.beads.prefix}" == "pt" ]]
               [[ "${cfg.settings.defaultAgent}" == "claude" ]]
+
+              # Crew member evaluation
+              [[ "${cfg.rigs.pure-test.crew.dev1.role}" == "developer" ]]
+              [[ "${cfg.rigs.pure-test.crew.dev1.email}" == "dev1@example.com" ]]
+              [[ "${cfg.rigs.pure-test.crew.dev2.role}" == "reviewer" ]]
+              [[ "${cfg.rigs.pure-test.crew.dev2.githubUsername}" == "dev2-gh" ]]
 
               echo "Pure evaluation checks passed"
               touch $out
