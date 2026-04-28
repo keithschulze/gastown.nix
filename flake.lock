@@ -1,5 +1,37 @@
 {
   "nodes": {
+    "beads-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1777328094,
+        "narHash": "sha256-aTMgTM5W2QBYzuwu+WkEZTOu6hAuMib179fMq4Xf3CQ=",
+        "owner": "gastownhall",
+        "repo": "beads",
+        "rev": "f4c46d917c27397d438242f49a2025b9205431a4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "gastownhall",
+        "repo": "beads",
+        "type": "github"
+      }
+    },
+    "gastown-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1777366244,
+        "narHash": "sha256-0bmixwMH/gJsOlXW+fqxCVAvQQmyjR0vLsLRDMK6uUw=",
+        "owner": "gastownhall",
+        "repo": "gastown",
+        "rev": "3075b632286690065b2a5f4227135d9c7ced0cb1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "gastownhall",
+        "repo": "gastown",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1776877367,
@@ -18,6 +50,8 @@
     },
     "root": {
       "inputs": {
+        "beads-src": "beads-src",
+        "gastown-src": "gastown-src",
         "nixpkgs": "nixpkgs"
       }
     }
