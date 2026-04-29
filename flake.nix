@@ -337,6 +337,38 @@
               touch $out
             '';
 
+          eval-rig-minimal =
+            let
+              rig = gastownLib.mkRig {
+                inherit pkgs;
+                gtPackage = self.packages.${system}.gt;
+                config = {
+                  name = "minimal-rig";
+                  gitUrl = "git@github.com:test/minimal-rig.git";
+                  beads.prefix = "mr";
+                };
+              };
+            in
+            pkgs.runCommand "check-eval-rig-minimal" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              # Verify basic config
+              jq -e '.rigs["minimal-rig"].git_url == "git@github.com:test/minimal-rig.git"' ${rig.configDir}/rigs.json
+              jq -e '.rigs["minimal-rig"].beads.prefix == "mr"' ${rig.configDir}/rigs.json
+
+              jq -e '.name == "minimal-rig"' ${rig.rigConfig}
+              jq -e '.default_branch == "main"' ${rig.rigConfig}
+
+              # Verify defaults apply
+              jq -e '.max_polecats == 10' ${rig.rigSettings}
+              jq -e '.auto_restart == true' ${rig.rigSettings}
+              jq -e '.default_formula == "mol-polecat-work"' ${rig.rigSettings}
+
+              # No crew members
+              jq -e '.crew == {}' ${rig.rigConfig}
+
+              echo "Minimal standalone rig checks passed"
+              touch $out
+            '';
+
           eval-rig-pure =
             let
               cfg = gastownLib.evalRig {
