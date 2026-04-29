@@ -206,5 +206,130 @@ in
           ${gtPackage}/bin/gt mayor attach
           # cleanup runs automatically via trap
         '';
+
+      test =
+        let
+          testDeps = [
+            pkgs.git
+            pkgs.jq
+            gtPackage
+          ];
+          crewChecks = concatStringsSep "\n" (
+            mapAttrsToList (member: _: ''
+              test -f "$GT_ROOT/${rigName}/crew/${member}/config.json" \
+                || fail "crew/${member}/config.json missing"
+              jq -e '.type == "crew-member"' \
+                "$GT_ROOT/${rigName}/crew/${member}/config.json" > /dev/null \
+                || fail "crew/${member}/config.json wrong type"
+              jq -e --arg name "${member}" '.name == $name' \
+                "$GT_ROOT/${rigName}/crew/${member}/config.json" > /dev/null \
+                || fail "crew/${member}/config.json wrong name"
+              echo "  crew/${member}/config.json: OK"
+            '') cfg.crew
+          );
+          stateCheck = lib.optionalString (cfg.mayorCrew != null) ''
+            # Layer 3: Crew state
+            echo "=== Layer 3: Crew state ==="
+            CREW_DIR="$GT_ROOT/${rigName}/crew/${cfg.mayorCrew}"
+            mkdir -p "$CREW_DIR"
+            NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            jq -n \
+              --arg name "${cfg.mayorCrew}" \
+              --arg rig "${rigName}" \
+              --arg clone_path "$TEST_DIR" \
+              --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
+              --arg created_at "$NOW" \
+              --arg updated_at "$NOW" \
+              '{name: $name, rig: $rig, clone_path: $clone_path, branch: $branch, created_at: $created_at, updated_at: $updated_at}' \
+              > "$CREW_DIR/state.json"
+            test -f "$CREW_DIR/state.json" || fail "state.json missing"
+            jq -e --arg expected "$TEST_DIR" '.clone_path == $expected' \
+              "$CREW_DIR/state.json" > /dev/null \
+              || fail "state.json clone_path incorrect"
+            jq -e --arg name "${rigName}" '.rig == $name' \
+              "$CREW_DIR/state.json" > /dev/null \
+              || fail "state.json rig incorrect"
+            echo "  state.json: OK (clone_path=$TEST_DIR)"
+            echo "Layer 3: PASS"
+          '';
+        in
+        pkgs.writeShellScriptBin "gt-test-rig" ''
+          set -euo pipefail
+          export PATH="${lib.makeBinPath testDeps}:$PATH"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          # Ensure git works in sandboxed environments
+          export GIT_AUTHOR_NAME="''${GIT_AUTHOR_NAME:-gt-test}"
+          export GIT_AUTHOR_EMAIL="''${GIT_AUTHOR_EMAIL:-test@gt.local}"
+          export GIT_COMMITTER_NAME="''${GIT_COMMITTER_NAME:-gt-test}"
+          export GIT_COMMITTER_EMAIL="''${GIT_COMMITTER_EMAIL:-test@gt.local}"
+
+          TEST_DIR="$(mktemp -d)"
+          trap "rm -rf $TEST_DIR" EXIT
+          export HOME="$TEST_DIR"
+
+          cd "$TEST_DIR"
+          git init --initial-branch=main
+          git commit --allow-empty -m "init"
+
+          export GT_TOWN_ROOT="$TEST_DIR/.gt"
+          export GT_ROOT="$GT_TOWN_ROOT"
+
+          # Layer 1: Activation
+          echo "=== Layer 1: Activation ==="
+          mkdir -p "$GT_ROOT/settings"
+          install -m 644 ${rigsJsonFile} "$GT_ROOT/rigs.json"
+          install -m 644 ${settingsJsonFile} "$GT_ROOT/settings/config.json"
+          mkdir -p "$GT_ROOT/${rigName}"
+          install -m 644 ${rigConfigFile} "$GT_ROOT/${rigName}/config.json"
+          ${crewActivations}
+
+          test -f "$GT_ROOT/rigs.json" || fail "rigs.json missing"
+          jq -e '.version == 1' "$GT_ROOT/rigs.json" > /dev/null \
+            || fail "rigs.json wrong version"
+          jq -e '.rigs["${rigName}"]' "$GT_ROOT/rigs.json" > /dev/null \
+            || fail "rigs.json missing rig entry"
+          echo "  rigs.json: OK"
+
+          test -f "$GT_ROOT/settings/config.json" \
+            || fail "settings/config.json missing"
+          jq -e '.type == "town-settings"' \
+            "$GT_ROOT/settings/config.json" > /dev/null \
+            || fail "settings/config.json wrong type"
+          echo "  settings/config.json: OK"
+
+          test -f "$GT_ROOT/${rigName}/config.json" \
+            || fail "${rigName}/config.json missing"
+          jq -e '.type == "rig"' \
+            "$GT_ROOT/${rigName}/config.json" > /dev/null \
+            || fail "${rigName}/config.json wrong type"
+          jq -e '.version == 1' \
+            "$GT_ROOT/${rigName}/config.json" > /dev/null \
+            || fail "${rigName}/config.json wrong version"
+          jq -e --arg name "${rigName}" '.name == $name' \
+            "$GT_ROOT/${rigName}/config.json" > /dev/null \
+            || fail "${rigName}/config.json wrong name"
+          echo "  ${rigName}/config.json: OK"
+
+          ${crewChecks}
+          echo "Layer 1: PASS"
+
+          # Layer 2: GT workspace discovery
+          echo "=== Layer 2: GT workspace discovery ==="
+          gt install "$GT_ROOT" --force --no-beads \
+            || fail "gt install failed"
+          gt rig list || fail "gt rig list failed"
+          echo "  gt rig list: OK"
+          gt rig config show ${rigName} \
+            || fail "gt rig config show failed"
+          echo "  gt rig config show ${rigName}: OK"
+          echo "Layer 2: PASS"
+
+          ${stateCheck}
+
+          echo ""
+          echo "All integration tests passed!"
+        '';
     };
 }
