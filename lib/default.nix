@@ -178,8 +178,9 @@ in
           # 1. Discover project root
           PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 
-          # 2. Set GT_ROOT
+          # 2. Set GT_ROOT and GT_TOWN_ROOT
           export GT_ROOT="$PROJECT_ROOT/.gt"
+          export GT_TOWN_ROOT="$GT_ROOT"
 
           # 3. Activate nix-generated config into .gt/
           echo "Activating rig ${rigName} at $GT_ROOT"
