@@ -48,6 +48,7 @@ let
       auto_start_on_up = rigCfg.autoStartOnUp;
       default_formula = rigCfg.defaultFormula;
       dnd = rigCfg.dnd;
+      dolt_port = rigCfg.doltPort;
       max_polecats = rigCfg.maxPolecats;
       polecat_branch_template = rigCfg.polecatBranchTemplate;
       priority_adjustment = rigCfg.priorityAdjustment;
@@ -280,7 +281,7 @@ in
           fi
 
           # 5. Initialize GT directory structure
-          ${gtPackage}/bin/gt install "$GT_ROOT" --force --no-beads
+          ${gtPackage}/bin/gt install "$GT_ROOT" --force --no-beads --dolt-port ${toString cfg.doltPort}
 
           # 6. Ensure gt down runs on exit (detach, signal, error)
           cleanup() { ${gtPackage}/bin/gt down; }

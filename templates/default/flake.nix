@@ -32,6 +32,7 @@
             name = "my-project";
             gitUrl = "git@github.com:org/project.git";
             beads.prefix = "mp";
+            # doltPort = 3308;  # Change when running multiple GT instances on the same machine
             crew.alice = {
               role = "developer";
             };

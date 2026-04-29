@@ -58,6 +58,12 @@ in
       description = "Custom branch naming template for polecats.";
     };
 
+    doltPort = mkOption {
+      type = types.port;
+      default = 3307;
+      description = "Port for the Dolt SQL server. Change when running multiple GT instances on the same machine.";
+    };
+
     priorityAdjustment = mkOption {
       type = types.int;
       default = 0;
