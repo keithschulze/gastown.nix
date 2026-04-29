@@ -276,7 +276,12 @@ in
           export GT_TOWN_ROOT="$TEST_DIR/.gt"
           export GT_ROOT="$GT_TOWN_ROOT"
 
-          # Layer 1: Activation
+          # Initialize GT directory skeleton first (gt install creates
+          # mayor/, settings/, etc. and overwrites rigs.json with defaults)
+          gt install "$GT_ROOT" --force --no-beads \
+            || fail "gt install failed"
+
+          # Layer 1: Activation (apply nix-generated config on top of skeleton)
           echo "=== Layer 1: Activation ==="
           mkdir -p "$GT_ROOT/settings"
           install -m 644 ${rigsJsonFile} "$GT_ROOT/rigs.json"
@@ -317,8 +322,6 @@ in
 
           # Layer 2: GT workspace discovery
           echo "=== Layer 2: GT workspace discovery ==="
-          gt install "$GT_ROOT" --force --no-beads \
-            || fail "gt install failed"
           gt rig list || fail "gt rig list failed"
           echo "  gt rig list: OK"
           gt rig config show ${rigName} \
