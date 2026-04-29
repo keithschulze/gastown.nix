@@ -302,6 +302,34 @@
               echo "Mayor crew selection checks passed"
               touch $out
             '';
+
+          check-integration =
+            let
+              rig = gastownLib.mkRig {
+                inherit pkgs;
+                gtPackage = self.packages.${system}.gt;
+                config = {
+                  name = "test-rig";
+                  gitUrl = "git@github.com:test/integration.git";
+                  beads.prefix = "ti";
+                  crew.tester = {
+                    role = "developer";
+                    githubUsername = "tester-gh";
+                    email = "tester@example.com";
+                  };
+                };
+              };
+            in
+            pkgs.runCommand "check-integration" {
+              nativeBuildInputs = [ pkgs.git pkgs.jq self.packages.${system}.gt ];
+            } ''
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              git config --global user.email "test@test.com"
+              git config --global user.name "Test"
+              ${rig.test}/bin/gt-test-rig
+              touch $out
+            '';
         }
       );
 

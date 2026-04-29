@@ -44,6 +44,11 @@
           program = "${rig.mayorAttach}/bin/gt-mayor-attach";
         };
 
+        apps.test = {
+          type = "app";
+          program = "${rig.test}/bin/gt-test-rig";
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = [
             gastown-nix.packages.${system}.gt

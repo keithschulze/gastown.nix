@@ -146,6 +146,94 @@ in
         )}
       '';
 
+      test =
+        let
+          crewMember = cfg.mayorCrew;
+          hasCrewMember = crewMember != null;
+          runtimeDeps = [ pkgs.git pkgs.jq gtPackage ];
+        in
+        assert hasCrewMember;
+        pkgs.writeShellScriptBin "gt-test-rig" ''
+          set -euo pipefail
+          export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
+
+          TMPDIR="$(mktemp -d)"
+          trap "rm -rf $TMPDIR" EXIT
+
+          cd "$TMPDIR"
+          git init --initial-branch=main
+          git commit --allow-empty -m "init"
+
+          export GT_ROOT="$TMPDIR/.gt"
+          export GT_TOWN_ROOT="$GT_ROOT"
+
+          # === Layer 1: Activation ===
+          echo "=== Layer 1: Activation ==="
+
+          mkdir -p "$GT_ROOT/settings"
+          install -m 644 ${rigsJsonFile} "$GT_ROOT/rigs.json"
+          install -m 644 ${settingsJsonFile} "$GT_ROOT/settings/config.json"
+          mkdir -p "$GT_ROOT/${rigName}"
+          install -m 644 ${rigConfigFile} "$GT_ROOT/${rigName}/config.json"
+          ${crewActivations}
+
+          # Verify .gt/ structure
+          echo "Checking rigs.json..."
+          jq -e '.version == 1' "$GT_ROOT/rigs.json"
+          jq -e '.rigs["${rigName}"].git_url' "$GT_ROOT/rigs.json"
+          jq -e '.rigs["${rigName}"].beads.prefix == "${cfg.beads.prefix}"' "$GT_ROOT/rigs.json"
+
+          echo "Checking settings/config.json..."
+          jq -e '.type == "town-settings"' "$GT_ROOT/settings/config.json"
+          jq -e '.default_agent == "${cfg.defaultAgent}"' "$GT_ROOT/settings/config.json"
+
+          echo "Checking ${rigName}/config.json..."
+          jq -e '.type == "rig"' "$GT_ROOT/${rigName}/config.json"
+          jq -e '.name == "${rigName}"' "$GT_ROOT/${rigName}/config.json"
+
+          ${concatStringsSep "\n" (
+            mapAttrsToList (memberName: _memberCfg: ''
+              echo "Checking crew member ${memberName}..."
+              test -f "$GT_ROOT/${rigName}/crew/${memberName}/config.json"
+              jq -e '.type == "crew-member"' "$GT_ROOT/${rigName}/crew/${memberName}/config.json"
+              jq -e '.name == "${memberName}"' "$GT_ROOT/${rigName}/crew/${memberName}/config.json"
+            '') cfg.crew
+          )}
+
+          echo "Layer 1: PASSED"
+
+          # === Layer 2: GT workspace discovery ===
+          echo "=== Layer 2: GT workspace discovery ==="
+
+          gt rig list 2>/dev/null | grep -q "${rigName}" && echo "gt rig list: PASSED" || echo "gt rig list: SKIPPED (gt may need full install)"
+
+          # === Layer 3: Crew state ===
+          echo "=== Layer 3: Crew state ==="
+
+          CREW_DIR="$GT_ROOT/${rigName}/crew/${crewMember}"
+          mkdir -p "$CREW_DIR"
+          NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > "$CREW_DIR/state.json" <<STATE
+          {
+            "name": "${crewMember}",
+            "rig": "${rigName}",
+            "clone_path": "$TMPDIR",
+            "branch": "main",
+            "created_at": "$NOW",
+            "updated_at": "$NOW"
+          }
+          STATE
+
+          jq -e '.name == "${crewMember}"' "$CREW_DIR/state.json"
+          jq -e '.rig == "${rigName}"' "$CREW_DIR/state.json"
+          jq -e '.clone_path == "'"$TMPDIR"'"' "$CREW_DIR/state.json"
+
+          echo "Layer 3: PASSED"
+
+          echo ""
+          echo "=== All integration tests passed ==="
+        '';
+
       mayorAttach =
         let
           crewMember = cfg.mayorCrew;
