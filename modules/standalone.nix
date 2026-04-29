@@ -21,6 +21,12 @@ in
         member is declared, that member is auto-selected.
       '';
     };
+
+    defaultAgent = mkOption {
+      type = types.str;
+      default = "claude";
+      description = "Default agent type for the rig.";
+    };
   };
 
   config = lib.mkIf (crewCount == 1) {

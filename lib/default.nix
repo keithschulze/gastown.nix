@@ -224,7 +224,7 @@ in
       });
 
       settingsJsonFile = pkgs.writeText "town-settings.json" (
-        builtins.toJSON (settingsToConfig { defaultAgent = "claude"; })
+        builtins.toJSON (settingsToConfig { defaultAgent = cfg.defaultAgent; })
       );
 
       rigConfigFile = pkgs.writeText "${rigName}-config.json" (
@@ -292,10 +292,13 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
+          runtimeDeps = [ pkgs.git pkgs.tmux gtPackage ]
+            ++ lib.optional (bdPackage != null) bdPackage;
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-mayor-attach" ''
           set -euo pipefail
+          export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
 
           # 1. Discover project root
           PROJECT_ROOT="$(git rev-parse --show-toplevel)"
