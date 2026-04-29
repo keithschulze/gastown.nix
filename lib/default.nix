@@ -150,7 +150,7 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.jq gtPackage ];
+          runtimeDeps = [ pkgs.git pkgs.jq pkgs.dolt gtPackage ];
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-test-rig" ''
@@ -238,7 +238,7 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.tmux gtPackage ]
+          runtimeDeps = [ pkgs.git pkgs.tmux pkgs.dolt gtPackage ]
             ++ lib.optional (bdPackage != null) bdPackage;
         in
         assert hasCrewMember;

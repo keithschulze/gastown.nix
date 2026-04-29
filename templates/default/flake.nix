@@ -53,6 +53,7 @@
           buildInputs = [
             gastown-nix.packages.${system}.gt
             gastown-nix.packages.${system}.bd
+            pkgs.dolt
           ];
         };
       }
