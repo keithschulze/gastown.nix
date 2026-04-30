@@ -2,7 +2,9 @@
 
 __WARNING: This is vibe coded using [gastown](https://github.com/gastownhall/gastown) for my own learning. IT'S NOT FUNCTIONAL, DO NOT USE.__
 
-Declarative Gas Town rig and crew configuration using the Nix module system.
+An embedded, declarative Gas Town rig and crew configuration using the Nix module system.
+
+This is __not__ how Gas Town is supposed to be used. Gas Town's philosophy is to manage many projects (rigs), so this goes squarely against that. As a result, there's a lot of Gas Town functionality that isn't relevant here. A lot is useful though. Once we've learnt what's useful, we can simplify.  
 
 ## Usage
 
