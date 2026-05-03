@@ -239,83 +239,21 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.tmux pkgs.dolt gtPackage ]
-            ++ lib.optional (bdPackage != null) bdPackage;
+          runtimeDeps = [ pkgs.git pkgs.tmux gtPackage ];
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-mayor-attach" ''
           set -euo pipefail
           export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
 
-          # 1. Discover project root
+          # Discover project root
           PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-
-          # 2. Set GT_ROOT and GT_TOWN_ROOT
           export GT_ROOT="$PROJECT_ROOT/.gt"
           export GT_TOWN_ROOT="$GT_ROOT"
 
-          # 3. Activate nix-generated config into .gt/
-          echo "Activating rig ${rigName} at $GT_ROOT"
-          mkdir -p "$GT_ROOT/settings"
-          install -m 644 ${rigsJsonFile} "$GT_ROOT/rigs.json"
-          install -m 644 ${settingsJsonFile} "$GT_ROOT/settings/config.json"
-          mkdir -p "$GT_ROOT/${rigName}"
-          install -m 644 ${rigConfigFile} "$GT_ROOT/${rigName}/config.json"
-          ${crewActivations}
-
-          # 4. Ensure crew state.json exists
-          CREW_DIR="$GT_ROOT/${rigName}/crew/${crewMember}"
-          mkdir -p "$CREW_DIR"
-          if [ ! -f "$CREW_DIR/state.json" ]; then
-            NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            cat > "$CREW_DIR/state.json" <<STATE
-          {
-            "name": "${crewMember}",
-            "rig": "${rigName}",
-            "clone_path": "$PROJECT_ROOT",
-            "branch": "$(git rev-parse --abbrev-ref HEAD)",
-            "created_at": "$NOW",
-            "updated_at": "$NOW"
-          }
-          STATE
-          fi
-
-          # 5. Create mayor and refinery git clones (idempotent)
-          if [ ! -d "$GT_ROOT/${rigName}/mayor/rig/.git" ]; then
-            echo "Cloning mayor worktree for ${rigName}..."
-            mkdir -p "$GT_ROOT/${rigName}/mayor"
-            git clone ${cfg.gitUrl} "$GT_ROOT/${rigName}/mayor/rig"
-          fi
-          if [ ! -d "$GT_ROOT/${rigName}/refinery/rig/.git" ]; then
-            echo "Cloning refinery worktree for ${rigName}..."
-            mkdir -p "$GT_ROOT/${rigName}/refinery"
-            git clone ${cfg.gitUrl} "$GT_ROOT/${rigName}/refinery/rig"
-          fi
-
-          # 6. Initialize GT directory structure
-          ${gtPackage}/bin/gt install "$GT_ROOT" --force --no-beads --dolt-port ${toString cfg.doltPort}
-
-          # 7. Ensure gt down runs on exit (detach, signal, error)
-          cleanup() {
-            ${gtPackage}/bin/gt down
-            ${gtPackage}/bin/gt rig remove ${rigName}
-          }
-          trap cleanup EXIT
-
-          # 8. Start services (Dolt, daemon, deacon, mayor, witnesses, refineries)
-          ${gtPackage}/bin/gt up
-
-          # 9. Init Dolt DB and adopt rig into GT runtime
-          ${gtPackage}/bin/gt dolt init-rig ${rigName}
-          ${gtPackage}/bin/gt rig add ${rigName} --adopt --prefix ${cfg.beads.prefix}
-
-          # 10. Start rig agents (witness, refinery) before mayor attach
-          ${gtPackage}/bin/gt rig start ${rigName}
-
-          # 11. Attach to mayor session (blocks until detach with Ctrl-B D)
-          cd "$CREW_DIR"
+          # Attach to mayor session (blocks until detach with Ctrl-B D)
+          cd "$GT_ROOT/${rigName}/crew/${crewMember}"
           ${gtPackage}/bin/gt mayor attach
-          # cleanup runs automatically via trap
         '';
     };
 }
