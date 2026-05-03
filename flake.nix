@@ -164,6 +164,10 @@
             type = "app";
             program = "${self.packages.${system}.bd}/bin/bd";
           };
+          gtUp = {
+            type = "app";
+            program = "${rig.gtUp}/bin/gt-up";
+          };
           mayorAttach = {
             type = "app";
             program = "${rig.mayorAttach}/bin/gt-mayor-attach";
