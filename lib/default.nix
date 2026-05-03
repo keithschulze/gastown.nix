@@ -317,5 +317,25 @@ in
           ${gtPackage}/bin/gt mayor attach
           # cleanup runs automatically via trap
         '';
+
+      gtDown =
+        let
+          runtimeDeps = [ pkgs.git pkgs.dolt gtPackage ];
+        in
+        pkgs.writeShellScriptBin "gt-down" ''
+          set -euo pipefail
+          export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
+
+          # Discover project root
+          PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+          export GT_ROOT="$PROJECT_ROOT/.gt"
+          export GT_TOWN_ROOT="$GT_ROOT"
+
+          # Teardown
+          ${gtPackage}/bin/gt rig remove ${rigName} || true
+          ${gtPackage}/bin/gt down
+
+          echo "Gas Town is down"
+        '';
     };
 }
