@@ -11,7 +11,7 @@ in
 
     schema = mkOption {
       type = types.int;
-      default = 1;
+      default = 2;
       description = "Schema version for the pack definition.";
     };
 

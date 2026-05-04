@@ -34,7 +34,7 @@ in
     beads = {
       provider = mkOption {
         type = types.str;
-        default = "dolt";
+        default = "file";
         description = "Beads storage provider.";
       };
 
