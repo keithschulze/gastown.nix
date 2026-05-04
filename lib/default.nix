@@ -106,10 +106,17 @@ in
       cfg = doEvalCity ([ { config = config; } ] ++ modules);
       fmt = pkgs.formats.toml { };
       cityToml = fmt.generate "${cfg.workspace.name}-city.toml" (cityToValue cfg);
+      # Shim: gc bundles bd but `gc start` checks for a standalone `bd` binary.
+      bdShim = pkgs.writeShellScriptBin "bd" ''exec ${gcPackage}/bin/gc bd "$@"'';
+
       runtimeDeps = [
         pkgs.git
         pkgs.tmux
+        pkgs.jq
+        pkgs.dolt
+        pkgs.lsof
         gcPackage
+        bdShim
       ];
 
       gcUp = pkgs.writeShellScriptBin "gc-up" ''
@@ -125,13 +132,9 @@ in
         install -m 644 ${packToml} "$GC_ROOT/pack.toml"
         install -m 644 ${cityToml} "$GC_ROOT/city.toml"
 
-        # Step 2: gc init (--existing for idempotency)
-        echo "Initializing workspace..."
-        ${gcPackage}/bin/gc init --existing
-
-        # Step 3: gc up
+        # Step 2: gc start (registers with supervisor + reconciles)
         echo "Starting services..."
-        ${gcPackage}/bin/gc up
+        ${gcPackage}/bin/gc start
       '';
 
       gcDown = pkgs.writeShellScriptBin "gc-down" ''
@@ -141,7 +144,7 @@ in
         PROJECT_ROOT="$(git rev-parse --show-toplevel)"
         export GC_ROOT="$PROJECT_ROOT/.gc"
 
-        ${gcPackage}/bin/gc down
+        ${gcPackage}/bin/gc stop
       '';
 
       gcAttach = pkgs.writeShellScriptBin "gc-attach" ''

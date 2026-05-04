@@ -55,8 +55,8 @@ declare your agent pack and city configuration. This generates `pack.toml` and
     };
   in {
     # city.cityToml  - city.toml derivation
-    # city.gcUp      - script: install configs, gc init, gc up
-    # city.gcDown    - script: gc down
+    # city.gcUp      - script: install configs, gc start
+    # city.gcDown    - script: gc stop
     # city.gcAttach  - script: gc mayor attach
     apps.up = {
       type = "app";
@@ -98,8 +98,8 @@ Generates `city.toml` and lifecycle scripts (`gcUp`, `gcDown`, `gcAttach`).
 
 The lifecycle scripts manage the full Gas Town lifecycle:
 
-- **`gcUp`** — installs `pack.toml` and `city.toml` into `.gc/`, runs `gc init`, then `gc up`
-- **`gcDown`** — runs `gc down` to tear down all services
+- **`gcUp`** — installs `pack.toml` and `city.toml` into `.gc/`, then runs `gc start`
+- **`gcDown`** — runs `gc stop` to tear down all services
 - **`gcAttach`** — runs `gc mayor attach` (blocks until detach)
 
 ## Pure evaluation

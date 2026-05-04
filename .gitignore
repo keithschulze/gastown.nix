@@ -1,7 +1,6 @@
 # Gas Town runtime
 .gt/
 .gc/
-.beads/
 .claude/
 .runtime/
 embeddeddolt/
@@ -10,3 +9,10 @@ CLAUDE.md
 # Nix build outputs
 result
 result-*
+
+# Gas City
+hooks/
+.beads/
+agents/
+city.toml
+pack.toml
