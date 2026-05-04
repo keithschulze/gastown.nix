@@ -53,7 +53,7 @@
             doCheck = false;
 
             proxyVendor = true;
-            vendorHash = lib.fakeHash;
+            vendorHash = "sha256-59k7xFBaLZJ50KWNhwIzttE8j7GXZPneq6o4eUTlvBI=";
 
             postPatch = ''
               goVer="$(go env GOVERSION | sed 's/^go//')"
