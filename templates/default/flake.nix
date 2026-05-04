@@ -26,8 +26,7 @@
 
         rig = gastown-nix.lib.mkRig {
           inherit pkgs;
-          gtPackage = gastown-nix.packages.${system}.gt;
-          bdPackage = gastown-nix.packages.${system}.bd;
+          gcPackage = gastown-nix.packages.${system}.gc;
           config = {
             name = "my-project";
             gitUrl = "git@github.com:org/project.git";
@@ -52,8 +51,7 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            gastown-nix.packages.${system}.gt
-            gastown-nix.packages.${system}.bd
+            gastown-nix.packages.${system}.gc
             pkgs.dolt
           ];
         };

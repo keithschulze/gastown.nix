@@ -4,13 +4,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    gastown-src = {
-      url = "github:gastownhall/gastown";
-      flake = false;
-    };
-
-    beads-src = {
-      url = "github:gastownhall/beads";
+    gascity-src = {
+      url = "github:gastownhall/gascity";
       flake = false;
     };
   };
@@ -19,8 +14,7 @@
     {
       self,
       nixpkgs,
-      gastown-src,
-      beads-src,
+      gascity-src,
     }:
     let
       lib = nixpkgs.lib;
@@ -49,17 +43,17 @@
       packages = forAllSystems (
         { pkgs, system }:
         let
-          bdBase = pkgs.buildGoModule {
-            pname = "beads";
-            version = "1.0.3";
-            src = beads-src;
+          gc = pkgs.buildGoModule {
+            pname = "gascity";
+            version = "1.0.0";
+            src = gascity-src;
 
-            subPackages = [ "cmd/bd" ];
+            subPackages = [ "cmd/gc" ];
             tags = [ "gms_pure_go" ];
             doCheck = false;
 
             proxyVendor = true;
-            vendorHash = "sha256-FjO7mUTB9FJL5ShVzEj+dEr1Hpzb23JO5QjNLPc5sLQ=";
+            vendorHash = lib.fakeHash;
 
             postPatch = ''
               goVer="$(go env GOVERSION | sed 's/^go//')"
@@ -71,69 +65,16 @@
             nativeBuildInputs = [ pkgs.git ];
 
             meta = with pkgs.lib; {
-              description = "beads (bd) - issue tracker for AI-supervised coding workflows";
-              homepage = "https://github.com/gastownhall/beads";
+              description = "Gas City (gc) - unified CLI for Gas Town and Beads";
+              homepage = "https://github.com/gastownhall/gascity";
               license = licenses.mit;
-              mainProgram = "bd";
-            };
-          };
-
-          bd = pkgs.stdenv.mkDerivation {
-            pname = "beads";
-            version = bdBase.version;
-            phases = [ "installPhase" ];
-            installPhase = ''
-              mkdir -p $out/bin
-              cp ${bdBase}/bin/bd $out/bin/bd
-              ln -s bd $out/bin/beads
-
-              mkdir -p $out/share/fish/vendor_completions.d
-              mkdir -p $out/share/bash-completion/completions
-              mkdir -p $out/share/zsh/site-functions
-
-              $out/bin/bd completion fish > $out/share/fish/vendor_completions.d/bd.fish
-              $out/bin/bd completion bash > $out/share/bash-completion/completions/bd
-              $out/bin/bd completion zsh > $out/share/zsh/site-functions/_bd
-            '';
-            meta = bdBase.meta;
-          };
-
-          gt = pkgs.buildGoModule {
-            pname = "gt";
-            version = "1.0.0";
-            src = gastown-src;
-
-            subPackages = [ "cmd/gt" ];
-            doCheck = false;
-
-            proxyVendor = true;
-            vendorHash = "sha256-ew4YoB1sn6FvPbxs29kqd2BUv/KO5Fy7JWHj/hKPEPs=";
-
-            postPatch = ''
-              goVer="$(go env GOVERSION | sed 's/^go//')"
-              go mod edit -go="$goVer"
-            '';
-
-            env.GOTOOLCHAIN = "auto";
-
-            ldflags = [
-              "-s"
-              "-w"
-              "-X github.com/steveyegge/gastown/internal/cmd.Build=nix"
-              "-X github.com/steveyegge/gastown/internal/cmd.BuiltProperly=1"
-            ];
-
-            meta = with pkgs.lib; {
-              description = "Gas Town - multi-agent orchestration for Claude Code";
-              homepage = "https://github.com/gastownhall/gastown";
-              license = licenses.mit;
-              mainProgram = "gt";
+              mainProgram = "gc";
             };
           };
         in
         {
-          inherit gt bd;
-          default = gt;
+          inherit gc;
+          default = gc;
         }
       );
 
@@ -142,8 +83,7 @@
         let
           rig = gastownLib.mkRig {
             inherit pkgs;
-            gtPackage = self.packages.${system}.gt;
-            bdPackage = self.packages.${system}.bd;
+            gcPackage = self.packages.${system}.gc;
             config = {
               name = "gt_nix";
               gitUrl = "git@github.com:keithschulze/gastown.nix.git";
@@ -156,13 +96,9 @@
           };
         in
         {
-          gt = {
+          gc = {
             type = "app";
-            program = "${self.packages.${system}.gt}/bin/gt";
-          };
-          bd = {
-            type = "app";
-            program = "${self.packages.${system}.bd}/bin/bd";
+            program = "${self.packages.${system}.gc}/bin/gc";
           };
           mayorAttach = {
             type = "app";
@@ -180,7 +116,7 @@
             type = "app";
             program = "${rig.test}/bin/gt-test-rig";
           };
-          default = self.apps.${system}.gt;
+          default = self.apps.${system}.gc;
         }
       );
 
@@ -189,8 +125,7 @@
         {
           default = pkgs.mkShell {
             buildInputs = [
-              self.packages.${system}.gt
-              self.packages.${system}.bd
+              self.packages.${system}.gc
               pkgs.dolt
             ];
           };
@@ -204,7 +139,7 @@
             let
               rig = gastownLib.mkRig {
                 inherit pkgs;
-                gtPackage = self.packages.${system}.gt;
+                gcPackage = self.packages.${system}.gc;
                 config = {
                   name = "my-rig";
                   gitUrl = "git@github.com:test/standalone.git";
@@ -257,7 +192,7 @@
             let
               rig = gastownLib.mkRig {
                 inherit pkgs;
-                gtPackage = self.packages.${system}.gt;
+                gcPackage = self.packages.${system}.gc;
                 config = {
                   name = "minimal-rig";
                   gitUrl = "git@github.com:test/minimal-rig.git";
@@ -340,7 +275,7 @@
             let
               rig = gastownLib.mkRig {
                 inherit pkgs;
-                gtPackage = self.packages.${system}.gt;
+                gcPackage = self.packages.${system}.gc;
                 config = {
                   name = "test-rig";
                   gitUrl = "git@github.com:test/integration.git";
@@ -354,7 +289,7 @@
               };
             in
             pkgs.runCommand "check-integration" {
-              nativeBuildInputs = [ pkgs.git pkgs.jq self.packages.${system}.gt ];
+              nativeBuildInputs = [ pkgs.git pkgs.jq self.packages.${system}.gc ];
             } ''
               export HOME="$TMPDIR/home"
               mkdir -p "$HOME"

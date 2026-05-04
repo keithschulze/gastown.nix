@@ -85,8 +85,7 @@ in
   mkRig =
     {
       pkgs,
-      gtPackage,
-      bdPackage ? null,
+      gcPackage,
       modules ? [ ],
       config ? { },
     }:
@@ -151,7 +150,7 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.jq pkgs.dolt gtPackage ];
+          runtimeDeps = [ pkgs.git pkgs.jq pkgs.dolt gcPackage ];
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-test-rig" ''
@@ -206,7 +205,7 @@ in
           # === Layer 2: GT workspace discovery ===
           echo "=== Layer 2: GT workspace discovery ==="
 
-          gt rig list 2>/dev/null | grep -q "${rigName}" && echo "gt rig list: PASSED" || echo "gt rig list: SKIPPED (gt may need full install)"
+          gc rig list 2>/dev/null | grep -q "${rigName}" && echo "gc rig list: PASSED" || echo "gc rig list: SKIPPED (gc may need full install)"
 
           # === Layer 3: Crew state ===
           echo "=== Layer 3: Crew state ==="
@@ -239,7 +238,7 @@ in
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.tmux gtPackage ];
+          runtimeDeps = [ pkgs.git pkgs.tmux gcPackage ];
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-mayor-attach" ''
@@ -253,15 +252,14 @@ in
 
           # Attach to mayor session (blocks until detach with Ctrl-B D)
           cd "$GT_ROOT/${rigName}/crew/${crewMember}"
-          ${gtPackage}/bin/gt mayor attach
+          ${gcPackage}/bin/gc mayor attach
         '';
 
       gtUp =
         let
           crewMember = cfg.mayorCrew;
           hasCrewMember = crewMember != null;
-          runtimeDeps = [ pkgs.git pkgs.tmux pkgs.dolt gtPackage ]
-            ++ lib.optional (bdPackage != null) bdPackage;
+          runtimeDeps = [ pkgs.git pkgs.tmux pkgs.dolt gcPackage ];
         in
         assert hasCrewMember;
         pkgs.writeShellScriptBin "gt-up" ''
@@ -314,27 +312,27 @@ in
           fi
 
           # 6. Initialize GT directory structure
-          ${gtPackage}/bin/gt install "$GT_ROOT" --force --no-beads --dolt-port ${toString cfg.doltPort}
+          ${gcPackage}/bin/gc install "$GT_ROOT" --force --no-beads --dolt-port ${toString cfg.doltPort}
 
           # 7. Repair stale state from prior runs (idempotency)
-          ${gtPackage}/bin/gt doctor --fix || true
+          ${gcPackage}/bin/gc doctor --fix || true
 
           # 8. Start services
-          ${gtPackage}/bin/gt up
+          ${gcPackage}/bin/gc up
 
           # 9. Init Dolt DB and adopt rig
-          ${gtPackage}/bin/gt dolt init-rig ${rigName}
-          ${gtPackage}/bin/gt rig add ${rigName} --adopt --prefix ${cfg.beads.prefix}
+          ${gcPackage}/bin/gc dolt init-rig ${rigName}
+          ${gcPackage}/bin/gc rig add ${rigName} --adopt --prefix ${cfg.beads.prefix}
 
           # 10. Start rig agents
-          ${gtPackage}/bin/gt rig start ${rigName}
+          ${gcPackage}/bin/gc rig start ${rigName}
 
           echo "Gas Town is up for rig ${rigName}"
         '';
 
       gtDown =
         let
-          runtimeDeps = [ pkgs.git pkgs.dolt gtPackage ];
+          runtimeDeps = [ pkgs.git pkgs.dolt gcPackage ];
         in
         pkgs.writeShellScriptBin "gt-down" ''
           set -euo pipefail
@@ -346,8 +344,8 @@ in
           export GT_TOWN_ROOT="$GT_ROOT"
 
           # Teardown
-          ${gtPackage}/bin/gt rig remove ${rigName} || true
-          ${gtPackage}/bin/gt down
+          ${gcPackage}/bin/gc rig remove ${rigName} || true
+          ${gcPackage}/bin/gc down
 
           echo "Gas Town is down"
         '';
