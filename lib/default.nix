@@ -2,8 +2,11 @@
 let
   inherit (lib)
     evalModules
-    filterAttrs
+    filter
     mapAttrs
+    mapAttrsToList
+    optionalAttrs
+    recursiveUpdate
     ;
 
   doEvalPack =
@@ -20,59 +23,79 @@ let
       specialArgs = { inherit lib; };
     }).config;
 
-  # Convert evaluated pack config to TOML-serialisable attrset
-  packToValue = cfg: {
-    pack = {
-      name = cfg.name;
-      schema = cfg.schema;
-    };
-    agents = mapAttrs (_: a: {
-      scope = a.scope;
-      provider = a.provider;
-      max_concurrent = a.maxConcurrent;
-    }) cfg.agents;
-  };
+  # Convert one evaluated agent into the [[agent]] entry that goes into pack.toml.
+  # Returns null when promptTemplate is null (agent comes from an imported pack).
+  agentToPackEntry =
+    name: a:
+    if a.promptTemplate == null then
+      null
+    else
+      {
+        inherit name;
+        prompt_template = "agents/${name}/prompt.template.md";
+      };
 
-  # Convert evaluated city config to TOML-serialisable attrset
-  cityToValue = cfg: {
-    workspace = {
-      name = cfg.workspace.name;
-      provider = cfg.workspace.provider;
-    };
-    session = {
-      provider = cfg.session.provider;
-      concurrent_per_agent = cfg.session.concurrentPerAgent;
-    };
-    beads = {
-      provider = cfg.beads.provider;
-      prefix = cfg.beads.prefix;
-    };
-    daemon = {
-      patrol_interval = cfg.daemon.patrolInterval;
-      max_restarts = cfg.daemon.maxRestarts;
-      shutdown_timeout = cfg.daemon.shutdownTimeout;
-    };
-    rigs = mapAttrs rigToValue cfg.rigs;
-  };
+  # Convert one evaluated agent into its agent.toml attrset, or null if no overrides set.
+  agentToAgentToml =
+    a:
+    let
+      base = (
+        optionalAttrs (a.dir != null) { inherit (a) dir; }
+        // optionalAttrs (a.provider != null) { inherit (a) provider; }
+        // optionalAttrs (a.optionDefaults != { }) { option_defaults = a.optionDefaults; }
+      );
+      merged = recursiveUpdate base a.extraAgentToml;
+    in
+    if merged == { } then null else merged;
 
-  rigToValue = _name: rig:
-    filterAttrs (_: v: v != null) {
-      path = rig.path;
-      git_url = rig.gitUrl;
-      default_branch = rig.defaultBranch;
-    };
+  namedSessionToValue =
+    s:
+    { inherit (s) template mode; } // optionalAttrs (s.scope != null) { inherit (s) scope; };
 
+  packToValue =
+    cfg:
+    let
+      agentEntries = filter (e: e != null) (mapAttrsToList agentToPackEntry cfg.agents);
+      sessionEntries = map namedSessionToValue cfg.namedSessions;
+      base = {
+        pack = {
+          inherit (cfg) name schema;
+        };
+      } // optionalAttrs (agentEntries != [ ]) { agent = agentEntries; }
+        // optionalAttrs (sessionEntries != [ ]) { named_session = sessionEntries; };
+    in
+    recursiveUpdate base cfg.extraPackToml;
+
+  cityToValue =
+    cfg:
+    let
+      base = {
+        workspace = { inherit (cfg.workspace) provider; };
+      } // optionalAttrs (cfg.rigs != [ ]) {
+        rigs = map (name: { inherit name; }) cfg.rigs;
+      };
+    in
+    recursiveUpdate base cfg.extraCityToml;
 in
 {
-  # Evaluate pack config (agent definitions). Pure — no pkgs required.
+  # Pure evaluation of a pack module. No pkgs required.
   evalPack =
     {
       modules ? [ ],
       config ? { },
     }:
-    doEvalPack ([ { config = config; } ] ++ modules);
+    doEvalPack ([ { inherit config; } ] ++ modules);
 
-  # Generate pack.toml via pkgs.formats.toml.
+  # Pure evaluation of a city module. No pkgs required.
+  evalCity =
+    {
+      modules ? [ ],
+      config ? { },
+    }:
+    doEvalCity ([ { inherit config; } ] ++ modules);
+
+  # Build a pack tree: a directory containing pack.toml plus agents/<name>/
+  # subtrees with prompt.template.md and optional agent.toml.
   mkPack =
     {
       pkgs,
@@ -80,85 +103,84 @@ in
       config ? { },
     }:
     let
-      cfg = doEvalPack ([ { config = config; } ] ++ modules);
+      cfg = doEvalPack ([ { inherit config; } ] ++ modules);
       fmt = pkgs.formats.toml { };
+
+      packToml = fmt.generate "${cfg.name}-pack.toml" (packToValue cfg);
+
+      # An agent contributes files when it has a prompt template and/or
+      # agent.toml overrides. A pure-overrides agent (no promptTemplate) emits
+      # only agent.toml — useful for tweaking an agent inherited from an
+      # imported system pack.
+      mkAgentDir =
+        name: a:
+        let
+          promptFile =
+            if a.promptTemplate == null then
+              null
+            else if builtins.isPath a.promptTemplate then
+              a.promptTemplate
+            else
+              pkgs.writeText "${name}-prompt.template.md" a.promptTemplate;
+
+          agentToml = agentToAgentToml a;
+          agentTomlFile =
+            if agentToml == null then
+              null
+            else
+              fmt.generate "${name}-agent.toml" agentToml;
+
+          installPrompt =
+            if promptFile == null then
+              ""
+            else
+              "install -m 644 ${promptFile} $out/agents/${name}/prompt.template.md";
+
+          installAgentToml =
+            if agentTomlFile == null then
+              ""
+            else
+              "install -m 644 ${agentTomlFile} $out/agents/${name}/agent.toml";
+        in
+        if promptFile == null && agentTomlFile == null then
+          null
+        else
+          pkgs.runCommand "${cfg.name}-agent-${name}" { } ''
+            mkdir -p $out/agents/${name}
+            ${installPrompt}
+            ${installAgentToml}
+          '';
+
+      agentDirs = lib.filter (d: d != null) (mapAttrsToList mkAgentDir cfg.agents);
     in
-    fmt.generate "${cfg.name}-pack.toml" (packToValue cfg);
+    pkgs.runCommand "${cfg.name}-pack" { } ''
+      mkdir -p $out
+      install -m 644 ${packToml} $out/pack.toml
+      ${lib.concatMapStringsSep "\n" (d: "cp -r --no-preserve=mode ${d}/. $out/") agentDirs}
+    '';
 
-  # Evaluate city config (runtime settings). Pure — no pkgs required.
-  evalCity =
-    {
-      modules ? [ ],
-      config ? { },
-    }:
-    doEvalCity ([ { config = config; } ] ++ modules);
-
-  # Generate city.toml and lifecycle scripts (gcUp, gcDown, gcAttach).
+  # Build a city tree: pack tree merged with city.toml.
   mkCity =
     {
       pkgs,
-      gcPackage,
-      packToml,
+      pack,
       modules ? [ ],
       config ? { },
     }:
     let
-      cfg = doEvalCity ([ { config = config; } ] ++ modules);
+      cfg = doEvalCity ([ { inherit config; } ] ++ modules);
       fmt = pkgs.formats.toml { };
-      cityToml = fmt.generate "${cfg.workspace.name}-city.toml" (cityToValue cfg);
-      # Shim: gc bundles bd but `gc start` checks for a standalone `bd` binary.
-      bdShim = pkgs.writeShellScriptBin "bd" ''exec ${gcPackage}/bin/gc bd "$@"'';
 
-      runtimeDeps = [
-        pkgs.git
-        pkgs.tmux
-        pkgs.jq
-        pkgs.dolt
-        pkgs.lsof
-        gcPackage
-        bdShim
-      ];
+      cityToml = fmt.generate "city.toml" (cityToValue cfg);
 
-      gcUp = pkgs.writeShellScriptBin "gc-up" ''
-        set -euo pipefail
-        export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
-
-        PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-        export GC_ROOT="$PROJECT_ROOT/.gc"
-
-        # Step 1: Install TOML
-        echo "Installing configuration..."
-        mkdir -p "$GC_ROOT"
-        install -m 644 ${packToml} "$GC_ROOT/pack.toml"
-        install -m 644 ${cityToml} "$GC_ROOT/city.toml"
-
-        # Step 2: gc start (registers with supervisor + reconciles)
-        echo "Starting services..."
-        ${gcPackage}/bin/gc start
-      '';
-
-      gcDown = pkgs.writeShellScriptBin "gc-down" ''
-        set -euo pipefail
-        export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
-
-        PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-        export GC_ROOT="$PROJECT_ROOT/.gc"
-
-        ${gcPackage}/bin/gc stop
-      '';
-
-      gcAttach = pkgs.writeShellScriptBin "gc-attach" ''
-        set -euo pipefail
-        export PATH="${lib.makeBinPath runtimeDeps}:$PATH"
-
-        PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-        export GC_ROOT="$PROJECT_ROOT/.gc"
-
-        ${gcPackage}/bin/gc mayor attach
+      tree = pkgs.runCommand "city-tree" { } ''
+        mkdir -p $out
+        cp -r --no-preserve=mode ${pack}/. $out/
+        install -m 644 ${cityToml} $out/city.toml
       '';
     in
     {
       config = cfg;
-      inherit cityToml gcUp gcDown gcAttach;
+      inherit cityToml pack tree;
     };
 }

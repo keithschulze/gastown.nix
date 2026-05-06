@@ -24,63 +24,33 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         gcLib = gastown-nix.lib;
-        gcPackage = gastown-nix.packages.${system}.gc;
 
-        packToml = gcLib.mkPack {
+        pack = gcLib.mkPack {
           inherit pkgs;
           config = {
             name = "my-project";
-            agents = {
-              mayor = {
-                scope = "town";
-                provider = "claude";
-                maxConcurrent = 1;
-              };
-              witness = {
-                scope = "rig";
-                provider = "claude";
-                maxConcurrent = 1;
-              };
-              polecat = {
-                scope = "rig";
-                provider = "claude";
-                maxConcurrent = 10;
-              };
-            };
+            agents.mayor.promptTemplate = ./agents/mayor/prompt.template.md;
+            namedSessions = [
+              { template = "mayor"; mode = "always"; scope = "city"; }
+            ];
           };
         };
 
         city = gcLib.mkCity {
-          inherit pkgs gcPackage packToml;
+          inherit pkgs pack;
           config = {
-            workspace.name = "my-project";
-            rigs.my-project = {
-              path = ".";
-              gitUrl = "git@github.com:org/project.git";
-            };
+            workspace.provider = "claude";
+            rigs = [ "my-project" ];
           };
         };
       in
       {
-        apps.up = {
-          type = "app";
-          program = "${city.gcUp}/bin/gc-up";
-        };
-
-        apps.down = {
-          type = "app";
-          program = "${city.gcDown}/bin/gc-down";
-        };
-
-        apps.attach = {
-          type = "app";
-          program = "${city.gcAttach}/bin/gc-attach";
-        };
-
-        devShells.default = pkgs.mkShell {
-          buildInputs = [
-            gcPackage
-          ];
+        # `nix build .#pack` — pack tree (pack.toml + agents/)
+        # `nix build .#city` — pack tree merged with city.toml
+        packages = {
+          inherit pack;
+          city = city.tree;
+          default = city.tree;
         };
       }
     );

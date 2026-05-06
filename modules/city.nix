@@ -1,87 +1,36 @@
-{ config, lib, ... }:
+{ lib, ... }:
 let
   inherit (lib) mkOption types;
 in
 {
   options = {
     workspace = {
-      name = mkOption {
-        type = types.str;
-        description = "City name, used as the workspace identifier.";
-      };
-
       provider = mkOption {
         type = types.str;
-        default = "local";
-        description = "Workspace provider backend.";
-      };
-    };
-
-    session = {
-      provider = mkOption {
-        type = types.str;
-        default = "tmux";
-        description = "Session multiplexer provider.";
-      };
-
-      concurrentPerAgent = mkOption {
-        type = types.ints.positive;
-        default = 1;
-        description = "Maximum concurrent sessions per agent.";
-      };
-    };
-
-    beads = {
-      provider = mkOption {
-        type = types.str;
-        default = "file";
-        description = "Beads storage provider.";
-      };
-
-      prefix = mkOption {
-        type = types.str;
-        default = "hq";
-        description = "Bead ID prefix for city-level beads.";
-      };
-    };
-
-    daemon = {
-      patrolInterval = mkOption {
-        type = types.str;
-        default = "30s";
-        description = "How often the daemon checks for stalled agents.";
-      };
-
-      maxRestarts = mkOption {
-        type = types.ints.unsigned;
-        default = 3;
-        description = "Maximum automatic restarts per agent before giving up.";
-      };
-
-      shutdownTimeout = mkOption {
-        type = types.str;
-        default = "60s";
-        description = "Grace period before force-killing agents on shutdown.";
+        default = "claude";
+        description = ''
+          Coding-agent provider for this city (e.g. `claude`, `codex`,
+          `gemini`). This is the per-workspace default; individual agents
+          can override via their own `provider` option.
+        '';
       };
     };
 
     rigs = mkOption {
-      type = types.attrsOf (types.submodule (
-        { name, ... }:
-        {
-          imports = [ ./rig.nix ];
+      type = types.listOf types.str;
+      default = [ ];
+      description = ''
+        Rig names declared by this city. Each becomes a `[[rigs]]` block
+        with `name = "<rig>"`. Filesystem path bindings live in the
+        machine-local `.gc/site.toml` (managed by `gc rig add`), not here.
+      '';
+      example = [ "gt_nix" "wyvern" ];
+    };
 
-          options = {
-            name = mkOption {
-              type = types.str;
-              default = name;
-              description = "Rig name, defaults to the attribute key.";
-            };
-          };
-        }
-      ));
+    extraCityToml = mkOption {
+      type = types.attrs;
       default = { };
-      description = "Rig definitions for this city.";
+      description = "Escape hatch for `city.toml` fields not modelled here.";
     };
   };
 }

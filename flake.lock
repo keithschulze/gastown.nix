@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "gascity-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1777884397,
-        "narHash": "sha256-Jv1eLXONYGtAHNDg5IQ4bB3Ny6Iah1rIydIo1znWHZs=",
-        "owner": "gastownhall",
-        "repo": "gascity",
-        "rev": "dfe314b3eec06f545dd5ccb0b1d9d42c18698b5f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "gastownhall",
-        "repo": "gascity",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1776877367,
@@ -34,7 +18,6 @@
     },
     "root": {
       "inputs": {
-        "gascity-src": "gascity-src",
         "nixpkgs": "nixpkgs"
       }
     }

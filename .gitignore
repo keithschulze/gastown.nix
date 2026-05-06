@@ -10,9 +10,8 @@ CLAUDE.md
 result
 result-*
 
-# Gas City
+# Gas City runtime artifacts (gc init / gc start outputs)
 hooks/
 .beads/
-agents/
-city.toml
-pack.toml
+/pack.toml
+/city.toml

@@ -2,19 +2,17 @@
 
 __WARNING: This is vibe coded using [gascity](https://github.com/gastownhall/gascity) for my own learning. IT'S NOT FUNCTIONAL, DO NOT USE.__
 
-Declarative Gas Town configuration using the Nix module system. Configuration is
-split into two layers: a **pack** (agent definitions) and a **city** (runtime
-workspace settings including rigs, sessions, and lifecycle scripts).
+Declarative authoring of [Gas City](https://github.com/gastownhall/gascity)
+pack and city configuration via the Nix module system. The flake produces a
+filesystem tree (`pack.toml` + `agents/<name>/...` + `city.toml`) that you drop
+into a Gas City workspace; it does **not** ship `gc`, `bd`, `tmux`, or any
+runtime — assume those are present on the host.
 
 ## Usage
 
 __WARNING: You appear to have IGNORED my previous warning. DO NOT PROCEED any further, this is all slop.__
 
 __WARNING: Absolute folly. This is your last and final warning: DO NOT USE THIS!__
-
-Add `gastown.nix` as a flake input and use `lib.mkPack` + `lib.mkCity` to
-declare your agent pack and city configuration. This generates `pack.toml` and
-`city.toml` along with lifecycle scripts (`gcUp`, `gcDown`, `gcAttach`).
 
 ```nix
 {
@@ -27,56 +25,43 @@ declare your agent pack and city configuration. This generates `pack.toml` and
   let
     pkgs = nixpkgs.legacyPackages.x86_64-linux;
     gcLib = gastown-nix.lib;
-    gcPackage = gastown-nix.packages.x86_64-linux.gc;
 
-    # 1. Define the agent pack (produces pack.toml)
-    packToml = gcLib.mkPack {
+    pack = gcLib.mkPack {
       inherit pkgs;
       config = {
         name = "my-project";
-        agents = {
-          mayor   = { scope = "town"; maxConcurrent = 1; };
-          witness = { scope = "rig";  maxConcurrent = 1; };
-          polecat = { scope = "rig";  maxConcurrent = 10; };
-        };
+        agents.mayor.promptTemplate = ./agents/mayor/prompt.template.md;
+        namedSessions = [
+          { template = "mayor"; mode = "always"; scope = "city"; }
+        ];
       };
     };
 
-    # 2. Define the city (produces city.toml + lifecycle scripts)
     city = gcLib.mkCity {
-      inherit pkgs gcPackage packToml;
+      inherit pkgs pack;
       config = {
-        workspace.name = "my-project";
-        rigs.my-project = {
-          path = ".";
-          gitUrl = "git@github.com:org/project.git";
-        };
+        workspace.provider = "claude";
+        rigs = [ "my-project" ];
       };
     };
   in {
-    # city.cityToml  - city.toml derivation
-    # city.gcUp      - script: install configs, gc start
-    # city.gcDown    - script: gc stop
-    # city.gcAttach  - script: gc mayor attach
-    apps.up = {
-      type = "app";
-      program = "${city.gcUp}/bin/gc-up";
-    };
-    apps.down = {
-      type = "app";
-      program = "${city.gcDown}/bin/gc-down";
-    };
-    apps.attach = {
-      type = "app";
-      program = "${city.gcAttach}/bin/gc-attach";
+    packages.x86_64-linux = {
+      inherit pack;
+      city = city.tree;
     };
   };
 }
 ```
 
+`nix build .#city` produces a directory containing everything Gas City needs.
+Copy it into a workspace (`cp -r ./result/. ~/my-project/`), then run
+`gc init` / `gc start` on the host.
+
 ### `mkPack`
 
-Generates a `pack.toml` derivation describing the agent pack.
+Builds a directory derivation containing `pack.toml` and an `agents/<name>/`
+subtree (one `prompt.template.md` per declared agent, plus `agent.toml` when
+overrides are set).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -86,77 +71,78 @@ Generates a `pack.toml` derivation describing the agent pack.
 
 ### `mkCity`
 
-Generates `city.toml` and lifecycle scripts (`gcUp`, `gcDown`, `gcAttach`).
+Builds `city.toml` and a `tree` derivation that merges the pack tree with
+`city.toml`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `pkgs` | nixpkgs | yes | Nixpkgs package set |
-| `gcPackage` | derivation | yes | `gc` CLI package |
-| `packToml` | derivation | yes | Pack TOML from `mkPack` |
+| `pack` | derivation | yes | Pack tree from `mkPack` |
 | `modules` | list | no | Extra NixOS-style modules |
 | `config` | attrset | no | Inline city configuration |
 
-The lifecycle scripts manage the full Gas Town lifecycle:
-
-- **`gcUp`** — installs `pack.toml` and `city.toml` into `.gc/`, then runs `gc start`
-- **`gcDown`** — runs `gc stop` to tear down all services
-- **`gcAttach`** — runs `gc mayor attach` (blocks until detach)
+Returns `{ config, cityToml, pack, tree }`. `tree` is the install root.
 
 ## Pure evaluation
 
-Use `evalPack` or `evalCity` when you only need the evaluated config without
-derivations (no `pkgs` required):
+Use `evalPack` / `evalCity` when you only need the evaluated config (no `pkgs`
+required):
 
 ```nix
 packCfg = gastown-nix.lib.evalPack {
   config = {
     name = "my-project";
-    agents.polecat = { scope = "rig"; maxConcurrent = 5; };
+    agents.worker.promptTemplate = "# Worker\n";
   };
 };
-# packCfg.name                    => "my-project"
-# packCfg.agents.polecat.scope    => "rig"
+# packCfg.name                            => "my-project"
+# packCfg.agents.worker.promptTemplate    => "# Worker\n"
 
 cityCfg = gastown-nix.lib.evalCity {
   config = {
-    workspace.name = "my-project";
-    rigs.my-project = {
-      path = ".";
-      gitUrl = "git@github.com:org/project.git";
-    };
+    workspace.provider = "claude";
+    rigs = [ "my-project" ];
   };
 };
-# cityCfg.workspace.name             => "my-project"
-# cityCfg.rigs.my-project.path       => "."
-# cityCfg.rigs.my-project.defaultBranch => "main"
+# cityCfg.workspace.provider => "claude"
+# cityCfg.rigs               => [ "my-project" ]
 ```
 
 ## Pack options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `name` | string | *required* | Pack name identifier |
-| `schema` | int | `2` | Schema version for the pack definition |
-| `agents.<name>.scope` | string | *required* | Agent scope (`"town"`, `"rig"`, `"project"`) |
-| `agents.<name>.provider` | string | `"claude"` | AI provider for this agent |
-| `agents.<name>.maxConcurrent` | int | `1` | Maximum concurrent instances |
+| `name` | string | *required* | Pack name (`pack.name`) |
+| `schema` | int | `2` | Pack schema version |
+| `agents.<name>.promptTemplate` | path or lines | `null` | Markdown prompt for the agent. When non-null, an `[[agent]]` block is emitted; when null the agent is presumed inherited from an imported pack. |
+| `agents.<name>.dir` | string | `null` | Working-directory override (`dir` in `agent.toml`) |
+| `agents.<name>.provider` | string | `null` | Provider override (`claude`, `codex`, ...) |
+| `agents.<name>.optionDefaults` | attrset | `{}` | `option_defaults = { ... }` table in `agent.toml` |
+| `agents.<name>.extraAgentToml` | attrset | `{}` | Escape hatch for un-modelled `agent.toml` fields |
+| `namedSessions[*].template` | string | *required* | Agent name this session is templated from |
+| `namedSessions[*].mode` | enum | `"always"` | One of `always`, `on_demand`, `never` |
+| `namedSessions[*].scope` | enum or null | `null` | One of `city`, `rig` |
+| `extraPackToml` | attrset | `{}` | Escape hatch for un-modelled `pack.toml` sections |
 
 ## City options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `workspace.name` | string | *required* | City/workspace name |
-| `workspace.provider` | string | `"local"` | Workspace provider backend |
-| `session.provider` | string | `"tmux"` | Session multiplexer provider |
-| `session.concurrentPerAgent` | int | `1` | Max concurrent sessions per agent |
-| `beads.provider` | string | `"file"` | Beads storage provider |
-| `beads.prefix` | string | `"hq"` | Bead ID prefix for city-level beads |
-| `daemon.patrolInterval` | string | `"30s"` | Agent health check interval |
-| `daemon.maxRestarts` | int | `3` | Max automatic restarts per agent |
-| `daemon.shutdownTimeout` | string | `"60s"` | Grace period before force-killing agents |
-| `rigs.<name>.path` | string | *required* | Filesystem path to the rig's working directory |
-| `rigs.<name>.gitUrl` | string | *required* | Git URL for the rig's repository |
-| `rigs.<name>.defaultBranch` | string | `"main"` | Default branch name |
+| `workspace.provider` | string | `"claude"` | Coding-agent provider for the workspace |
+| `rigs` | list of string | `[]` | Rig names; each becomes a `[[rigs]]` block |
+| `extraCityToml` | attrset | `{}` | Escape hatch for un-modelled `city.toml` fields |
+
+## What this does NOT model
+
+The Nix layer only authors what belongs in `pack.toml`, `city.toml`, and
+`agents/<name>/`. The rest of a Gas City workspace is user-managed:
+
+- `formulas/`, `orders/`, `commands/`, `doctor/`, `template-fragments/`,
+  `overlay/`, `assets/` — copy or commit alongside the generated tree.
+- `.gc/site.toml` — machine-local workspace identity and rig path bindings,
+  populated by `gc init` and `gc rig add`.
+- `[imports.*]`, `[global]`, `[[patches.agent]]` and similar `pack.toml`
+  sections — reach for `extraPackToml` if you need them.
 
 ## Running checks
 
