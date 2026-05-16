@@ -1,17 +1,6 @@
 {
   description = "Run Claude Code and beads inside an isolated NixOS microVM";
 
-  nixConfig = {
-    extra-substituters = [
-      "https://cache.numtide.com"
-      "https://microvm.cachix.org"
-    ];
-    extra-trusted-public-keys = [
-      "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
-      "microvm.cachix.org-1:oXnBc6hRE3eX5rSYdRyMYXnfzcCxC7yKPTbZXALsqys="
-    ];
-  };
-
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
