@@ -1,17 +1,13 @@
-# Gas Town runtime
-.gt/
-.gc/
-.claude/
-.runtime/
-embeddeddolt/
-CLAUDE.md
-
 # Nix build outputs
 result
 result-*
 
-# Gas City runtime artifacts (gc init / gc start outputs)
-hooks/
-.beads/
-/pack.toml
-/city.toml
+# microvm.nix runtime artifacts (created at the host CWD when starting a VM)
+*.img
+control.socket
+*.sock
+
+# Beads (work tracking)
+.beads/*
+!.beads/config.yaml
+!.beads/metadata.json

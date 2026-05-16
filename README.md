@@ -1,151 +1,148 @@
-# gastown.nix
+# agent-vm.nix
 
-__WARNING: This is vibe coded using [gascity](https://github.com/gastownhall/gascity) for my own learning. IT'S NOT FUNCTIONAL, DO NOT USE.__
+Run Claude Code (and friends) inside an isolated NixOS microVM. The flake
+glues together [`microvm.nix`][microvm] and [`llm-agents.nix`][llm-agents]:
+the former gives you a declarative VM runner that works on Linux and macOS
+(via vfkit), the latter ships pre-built `claude-code`, `beads-rust`, `codex`,
+etc. from a binary cache so you don't compile them yourself.
 
-Declarative authoring of [Gas City](https://github.com/gastownhall/gascity)
-pack and city configuration via the Nix module system. The flake produces a
-filesystem tree (`pack.toml` + `agents/<name>/...` + `city.toml`) that you drop
-into a Gas City workspace; it does **not** ship `gc`, `bd`, `tmux`, or any
-runtime — assume those are present on the host.
+> **Status**: foundation only. Boots a VM with Claude + beads on the PATH,
+> auto-logs in, and lets you mount host directories (workspace, ssh, gnupg,
+> beads DB, …) via virtiofs. Home-manager is intentionally not bundled — plug
+> in your own via `extraModules`.
 
-## Usage
+[microvm]: https://github.com/microvm-nix/microvm.nix
+[llm-agents]: https://github.com/numtide/llm-agents.nix
 
-__WARNING: You appear to have IGNORED my previous warning. DO NOT PROCEED any further, this is all slop.__
+## Quickstart (dogfood VM)
 
-__WARNING: Absolute folly. This is your last and final warning: DO NOT USE THIS!__
+The flake exposes a self-contained VM with no host mounts, useful for
+checking everything resolves:
+
+```sh
+nix run github:keithschulze/agent-vm.nix#vm
+```
+
+On first run microvm.nix creates a writable nix-store overlay image in the
+current working directory and boots the guest. Log in is automatic
+(`agent` / `agent`).
+
+## Using it in your own flake
+
+```sh
+nix flake init -t github:keithschulze/agent-vm.nix
+```
+
+That drops a `flake.nix` you edit to set `username`, the host paths to mount,
+and the hypervisor (`vfkit` on macOS, `qemu` on Linux). Then:
+
+```sh
+nix run .#default
+```
+
+A minimal example:
 
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    gastown-nix.url = "github:keithschulze/gastown.nix";
+    agent-vm = {
+      url = "github:keithschulze/agent-vm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, gastown-nix, ... }:
-  let
-    pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    gcLib = gastown-nix.lib;
-
-    pack = gcLib.mkPack {
-      inherit pkgs;
-      config = {
-        name = "my-project";
-        agents.mayor.promptTemplate = ./agents/mayor/prompt.template.md;
-        namedSessions = [
-          { template = "mayor"; mode = "always"; scope = "city"; }
+  outputs = { self, nixpkgs, agent-vm }:
+    let
+      vm = agent-vm.lib.mkAgentVM {
+        inherit nixpkgs;
+        system     = "aarch64-linux";   # guest arch
+        hypervisor = "vfkit";           # macOS host; use "qemu" on Linux
+        username   = "me";
+        shares = [
+          { proto = "virtiofs"; tag = "ws";     source = "/Users/me/workspace"; mountPoint = "/home/me/workspace"; }
+          { proto = "virtiofs"; tag = "ssh";    source = "/Users/me/.ssh";      mountPoint = "/home/me/.ssh"; }
+          { proto = "virtiofs"; tag = "claude"; source = "/Users/me/.claude";   mountPoint = "/home/me/.claude"; }
+          { proto = "virtiofs"; tag = "beads";  source = "/Users/me/workspace/proj/.beads"; mountPoint = "/home/me/.beads"; }
+          { proto = "virtiofs"; tag = "gnupg";  source = "/Users/me/.gnupg";    mountPoint = "/home/me/.gnupg"; }
         ];
       };
+    in {
+      packages.aarch64-darwin.default = vm.config.microvm.declaredRunner;
     };
-
-    city = gcLib.mkCity {
-      inherit pkgs pack;
-      config = {
-        workspace.provider = "claude";
-        rigs = [ "my-project" ];
-      };
-    };
-  in {
-    packages.x86_64-linux = {
-      inherit pack;
-      city = city.tree;
-    };
-  };
 }
 ```
 
-`nix build .#city` produces a directory containing everything Gas City needs.
-Copy it into a workspace (`cp -r ./result/. ~/my-project/`), then run
-`gc init` / `gc start` on the host.
+## `mkAgentVM` parameters
 
-### `mkPack`
+| Parameter       | Type                          | Default            | Notes |
+|-----------------|-------------------------------|--------------------|-------|
+| `nixpkgs`       | flake input                   | this flake's       | Caller-supplied nixpkgs; used to call `lib.nixosSystem`. |
+| `system`        | string                        | *required*         | Guest system (always Linux, e.g. `aarch64-linux`). |
+| `hostname`      | string                        | `"agent-vm"`       | VM hostname. |
+| `username`      | string                        | `"agent"`          | Primary user account. |
+| `uid`           | int                           | `1000`             | Match this to your host UID for write access to shared dirs. |
+| `hypervisor`    | string                        | `"qemu"`           | `"vfkit"` on macOS. |
+| `vcpu`          | int                           | `4`                | |
+| `mem`           | int (MiB)                     | `8192`             | |
+| `shares`        | list of microvm share attrs   | `[ ]`              | Appended to the mandatory ro-store share. Each entry is `{ proto, tag, source, mountPoint }`. |
+| `volumes`       | list / `null`                 | `null`             | Override the default writable-store overlay volume. |
+| `interfaces`    | list / `null`                 | `null`             | Override the default user-mode network interface. |
+| `extraPackages` | list of packages              | `[ ]`              | Added to `environment.systemPackages` inside the VM. |
+| `extraModules`  | list of NixOS modules         | `[ ]`              | Drop in your home-manager config, git identity, etc. here. |
 
-Builds a directory derivation containing `pack.toml` and an `agents/<name>/`
-subtree (one `prompt.template.md` per declared agent, plus `agent.toml` when
-overrides are set).
+`mkAgentVM` returns a full `nixosSystem`; reach `vm.config.microvm.declaredRunner`
+for the runnable derivation.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `pkgs` | nixpkgs | yes | Nixpkgs package set |
-| `modules` | list | no | Extra NixOS-style modules |
-| `config` | attrset | no | Inline pack configuration |
+## What ships inside the VM
 
-### `mkCity`
+- `claude-code`, `beads-rust` from `llm-agents.nix`
+- `git`, `gnupg`, `openssh`
+- `jq`, `ripgrep`, `fzf`, `htop`, `lsof`, `helix`
+- zsh as the login shell
+- auto-login on tty for `username`
+- nix configured for flakes, with the numtide + microvm caches trusted
 
-Builds `city.toml` and a `tree` derivation that merges the pack tree with
-`city.toml`.
+Everything else (home-manager, dotfiles, tmux, direnv, helix config, …) is up
+to you to compose into `extraModules`.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `pkgs` | nixpkgs | yes | Nixpkgs package set |
-| `pack` | derivation | yes | Pack tree from `mkPack` |
-| `modules` | list | no | Extra NixOS-style modules |
-| `config` | attrset | no | Inline city configuration |
+## Host requirements
 
-Returns `{ config, cityToml, pack, tree }`. `tree` is the install root.
+- **Linux host**: `nix` with flakes enabled. The default `qemu` hypervisor is
+  picked up from nixpkgs at runtime.
+- **macOS host**: a working `nix-darwin`/`nix` install **plus** a Linux remote
+  builder. microvm.nix can run the VM via vfkit on macOS, but the guest
+  derivation itself has to be built on Linux. See microvm.nix's FAQ for the
+  `linux-builder` setup.
 
-## Pure evaluation
+The flake declares both `cache.numtide.com` (for `claude-code`, `beads-rust`,
+…) and `microvm.cachix.org` (for the runner). Accept them with
+`--accept-flake-config` the first time.
 
-Use `evalPack` / `evalCity` when you only need the evaluated config (no `pkgs`
-required):
+## Sharing GPG / SSH keys with the host
 
-```nix
-packCfg = gastown-nix.lib.evalPack {
-  config = {
-    name = "my-project";
-    agents.worker.promptTemplate = "# Worker\n";
-  };
-};
-# packCfg.name                            => "my-project"
-# packCfg.agents.worker.promptTemplate    => "# Worker\n"
+There are two patterns, both with tradeoffs:
 
-cityCfg = gastown-nix.lib.evalCity {
-  config = {
-    workspace.provider = "claude";
-    rigs = [ "my-project" ];
-  };
-};
-# cityCfg.workspace.provider => "claude"
-# cityCfg.rigs               => [ "my-project" ]
-```
+1. **Share the directory** — mount `~/.gnupg` (or `~/.ssh`) into the VM. The
+   private keys live on the host disk and are visible inside the guest via
+   virtiofs. gpg will spawn its own agent inside the guest. Unix-socket
+   forwarding (the host's `gpg-agent` socket inside the shared dir) is not
+   reliable over virtiofs, so don't count on agent-mediated signing — count
+   on the keyring being readable. Pros: simple. Cons: private key material
+   is now reachable from inside the (otherwise isolated) VM.
 
-## Pack options
+2. **Forward the agent socket** — run `socat` (or similar) on the host to
+   bridge the host agent socket to a TCP port, then connect from inside the
+   guest. More setup; keeps keys off the guest. Not wired up by this flake.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `name` | string | *required* | Pack name (`pack.name`) |
-| `schema` | int | `2` | Pack schema version |
-| `agents.<name>.promptTemplate` | path or lines | `null` | Markdown prompt for the agent. When non-null, an `[[agent]]` block is emitted; when null the agent is presumed inherited from an imported pack. |
-| `agents.<name>.dir` | string | `null` | Working-directory override (`dir` in `agent.toml`) |
-| `agents.<name>.provider` | string | `null` | Provider override (`claude`, `codex`, ...) |
-| `agents.<name>.optionDefaults` | attrset | `{}` | `option_defaults = { ... }` table in `agent.toml` |
-| `agents.<name>.extraAgentToml` | attrset | `{}` | Escape hatch for un-modelled `agent.toml` fields |
-| `namedSessions[*].template` | string | *required* | Agent name this session is templated from |
-| `namedSessions[*].mode` | enum | `"always"` | One of `always`, `on_demand`, `never` |
-| `namedSessions[*].scope` | enum or null | `null` | One of `city`, `rig` |
-| `extraPackToml` | attrset | `{}` | Escape hatch for un-modelled `pack.toml` sections |
+If you only need git commit signing, option 1 is the path of least
+resistance: share `~/.gnupg`, let gpg-agent run inside the VM, type your
+passphrase once per session.
 
-## City options
+## What this flake does *not* do
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `workspace.provider` | string | `"claude"` | Coding-agent provider for the workspace |
-| `rigs` | list of string | `[]` | Rig names; each becomes a `[[rigs]]` block |
-| `extraCityToml` | attrset | `{}` | Escape hatch for un-modelled `city.toml` fields |
-
-## What this does NOT model
-
-The Nix layer only authors what belongs in `pack.toml`, `city.toml`, and
-`agents/<name>/`. The rest of a Gas City workspace is user-managed:
-
-- `formulas/`, `orders/`, `commands/`, `doctor/`, `template-fragments/`,
-  `overlay/`, `assets/` — copy or commit alongside the generated tree.
-- `.gc/site.toml` — machine-local workspace identity and rig path bindings,
-  populated by `gc init` and `gc rig add`.
-- `[imports.*]`, `[global]`, `[[patches.agent]]` and similar `pack.toml`
-  sections — reach for `extraPackToml` if you need them.
-
-## Running checks
-
-```bash
-nix flake check
-```
+- Doesn't provision your dotfiles or shell config — bring your own
+  `home-manager` module via `extraModules`.
+- Doesn't manage credentials, agents, or secret storage on the host.
+- Doesn't enforce any specific work-tracking workflow — `beads-rust` is on
+  the PATH; pointing it at a shared `.beads/` directory is your call.
